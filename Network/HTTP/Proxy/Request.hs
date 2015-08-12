@@ -14,11 +14,17 @@ module Network.HTTP.Proxy.Request
     )
     where
 
+import Control.Applicative
+import Control.Monad
+
 import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Char8 as BS
 import Data.Maybe
 
+import           Network.HTTP.Types (Method)
 import qualified Network.HTTP.Types as HT
 import qualified Network.Wai as Wai
+import qualified Network.URI as Uri
 
 type Port = Int
 
@@ -27,7 +33,7 @@ type Port = Int
 data Request = Request
     {
     -- | Request method such as GET.
-      requestMethod :: HT.Method
+      requestMethod :: Method
     -- | HTTP version such as 1.1.
     , httpVersion :: HT.HttpVersion
     -- | The upstream host name.
@@ -44,11 +50,40 @@ data Request = Request
     }
 
 
-proxyRequest :: Wai.Request -> Request
-proxyRequest = error "proxyRequest"
+-- FIXME(sio): don't assume the authority part
+-- previous behaviour.
+waiHostPort :: Wai.Request -> Maybe (ByteString, Port)
+waiHostPort wreq = do
+    u <- Uri.parseURI . BS.unpack $ Wai.rawPathInfo wreq
+    a <- Uri.uriAuthority u
+    (p,_) <- BS.readInt . BS.pack $ Uri.uriPort a
+    pure (BS.pack (Uri.uriRegName a), p)
+
+proxyRequest :: Wai.Request -> Maybe Request
+proxyRequest w = do
+    (host', port') <- waiHostPort w
+    pure $ Request method'
+                   version'
+                   host'
+                   port'
+                   headers'
+                   path'
+                   query'
+         where
+    method'  = Wai.requestMethod w
+    version' = Wai.httpVersion w
+    headers' = Wai.requestHeaders w
+    path'    = Wai.rawPathInfo w
+    query'   = Wai.queryString w
 
 waiRequest :: Request -> Wai.Request
-waiRequest = error "waiRequest"
+waiRequest r = Wai.defaultRequest
+    { Wai.requestMethod  = requestMethod r
+    , Wai.httpVersion    = httpVersion r
+    , Wai.requestHeaders = requestHeaders r
+    , Wai.rawPathInfo    = requestPath r
+    , Wai.queryString    = queryString r
+    }
 
 waiRequestHost :: Wai.Request -> ByteString
 waiRequestHost req = fromMaybe "???" $ Wai.requestHeaderHost req
