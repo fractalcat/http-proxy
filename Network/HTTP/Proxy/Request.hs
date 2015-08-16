@@ -37,7 +37,7 @@ data Request = Request
     -- | The part of the URL before the query part.
     , requestPath :: ByteString
     -- | Parsed query string information
-    , queryString :: HT.Query
+    , queryString :: ByteString
     } deriving (Show, Eq)
 
 proxyRequest :: Wai.Request -> Request
@@ -51,7 +51,7 @@ proxyRequest w = Request method'
     version' = Wai.httpVersion w
     headers' = Wai.requestHeaders w
     path'    = Wai.rawPathInfo w
-    query'   = Wai.queryString w
+    query'   = Wai.rawQueryString w
 
 waiRequest :: Request -> Wai.Request
 waiRequest r = Wai.defaultRequest
@@ -59,7 +59,7 @@ waiRequest r = Wai.defaultRequest
     , Wai.httpVersion    = httpVersion r
     , Wai.requestHeaders = requestHeaders r
     , Wai.rawPathInfo    = requestPath r
-    , Wai.queryString    = queryString r
+    , Wai.rawQueryString    = queryString r
     }
 
 waiRequestHost :: Wai.Request -> ByteString
