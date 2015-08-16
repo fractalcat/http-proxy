@@ -47,7 +47,6 @@ proxyRequest w = Request (Wai.requestMethod w)
                          (Wai.rawPathInfo w)
                          (Wai.rawQueryString w)
 
-
 waiRequest :: Request -> Wai.Request
 waiRequest r = Wai.defaultRequest
     { Wai.requestMethod  = requestMethod r

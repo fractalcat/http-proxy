@@ -38,6 +38,7 @@ module Network.HTTP.Proxy
     where
 
 import Blaze.ByteString.Builder (fromByteString)
+import Control.Applicative
 import Control.Concurrent.Async (race_)
 import Control.Exception (SomeException)
 import Data.ByteString.Char8 (ByteString)
@@ -77,7 +78,7 @@ runProxy port = runProxySettings $ defaultSettings { proxyPort = port }
 runProxySettings :: Settings -> IO ()
 runProxySettings set =
     HC.newManager HC.tlsManagerSettings
-        >>= Warp.runSettings (warpSettings set) . proxyApp
+        >>= Warp.runSettings (warpSettings set) . (proxyApp (proxyRequestModifier set))
 
 
 -- | Various proxy server settings. This is purposely kept as an abstract data
@@ -135,16 +136,21 @@ defaultSettings = Settings
 -- -----------------------------------------------------------------------------
 
 
-proxyApp :: HC.Manager -> Wai.Request -> (Wai.Response -> IO Wai.ResponseReceived) -> IO Wai.ResponseReceived
-proxyApp mgr wreq respond
+proxyApp :: Maybe (Request -> IO Request)
+         -> HC.Manager
+         -> Wai.Request
+         -> (Wai.Response -> IO Wai.ResponseReceived)
+         -> IO Wai.ResponseReceived
+proxyApp modify mgr wreq respond
     | Wai.requestMethod wreq == "CONNECT" =
             respond $ responseRawSource (handleConnect wreq)
                     (Wai.responseLBS HT.status500 [("Content-Type", "text/plain")] "No support for responseRaw")
-    | otherwise = do
-        hreq0 <- HC.parseUrl $ BS.unpack (Wai.rawPathInfo wreq <> Wai.rawQueryString wreq)
+    | otherwise = let preq = proxyRequest wreq in do
+        wreq' <- waiRequest <$> (maybe (pure preq) (\f -> f preq) modify)
+        hreq0 <- HC.parseUrl $ BS.unpack (Wai.rawPathInfo wreq' <> Wai.rawQueryString wreq')
         let hreq = hreq0
-                { HC.method = Wai.requestMethod wreq
-                , HC.requestHeaders = filter dropRequestHeader $ Wai.requestHeaders wreq
+                { HC.method = Wai.requestMethod wreq'
+                , HC.requestHeaders = filter dropRequestHeader $ Wai.requestHeaders wreq'
                 , HC.redirectCount = 0 -- Always pass redirects back to the client.
                 , HC.requestBody =
                     case Wai.requestBodyLength wreq of
